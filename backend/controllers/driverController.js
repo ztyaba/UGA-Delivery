@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Driver = require('../models/Driver');
 const Vendor = require('../models/Vendor');
+const { emitToRoom } = require('../sockets');
 
 function assertDriverAccess (req, driverIdParam) {
   if (req.user.role !== 'driver') {
@@ -65,6 +66,19 @@ async function applyToVendor (req, res) {
   }
 
   await vendor.save();
+
+  const application = vendor.pendingDriverApplications.find((app) => app.driverId.toString() === id);
+
+  emitToRoom(`vendor:${vendorId}`, 'vendor:driver-application', {
+    vendorId,
+    driverId: driver._id,
+    applicationId: application ? application._id : null
+  });
+
+  emitToRoom(`driver:${driver._id}`, 'driver:application-updated', {
+    vendorId,
+    status: driver.profile.verifiedStatus
+  });
 
   res.json({ message: 'Application submitted', driver, vendorId });
 }

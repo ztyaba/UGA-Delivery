@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const Driver = require('../models/Driver');
+const { emitToRoom } = require('../sockets');
 
 const AUTO_PAY_WINDOW_MS = 5 * 60 * 1000;
 const timers = new Map();
@@ -54,6 +55,21 @@ async function payOrder (orderId, { auto = false, skipIfReviewed = false } = {})
   }
 
   clearAutoPay(orderId);
+
+  const payload = {
+    orderId: order._id,
+    driverId: order.assignedDriver,
+    vendorId: order.vendorId,
+    amount: order.driverPayout,
+    paidAt: order.paidAt,
+    auto
+  };
+
+  emitToRoom(`order:${order._id}`, 'payout:completed', payload);
+  emitToRoom(`vendor:${order.vendorId}`, 'payout:completed', payload);
+  if (order.assignedDriver) {
+    emitToRoom(`driver:${order.assignedDriver}`, 'payout:completed', payload);
+  }
 
   return order;
 }

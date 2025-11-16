@@ -4,6 +4,33 @@ const Vendor = require('../models/Vendor');
 const Driver = require('../models/Driver');
 const DailyCounter = require('../models/DailyCounter');
 const { scheduleAutoPay, clearAutoPay, payOrder } = require('../services/payoutService');
+const { emitToRoom } = require('../sockets');
+
+function broadcastOrderEvent (order, event, extraPayload = {}) {
+  if (!order) return;
+
+  const payload = {
+    orderId: order._id,
+    vendorId: order.vendorId,
+    customerId: order.customerId,
+    assignedDriver: order.assignedDriver,
+    status: order.status,
+    driverPayout: order.driverPayout,
+    deliveredAt: order.deliveredAt,
+    ...extraPayload
+  };
+
+  emitToRoom(`order:${order._id}`, event, payload);
+  emitToRoom(`vendor:${order.vendorId}`, event, payload);
+  emitToRoom(`customer:${order.customerId}`, event, payload);
+  if (order.assignedDriver) {
+    emitToRoom(`driver:${order.assignedDriver}`, event, payload);
+  }
+}
+
+function broadcastVendorDrivers (vendorId, event, payload = {}) {
+  emitToRoom(`drivers:vendor:${vendorId}`, event, payload);
+}
 
 function assertObjectId (value, fieldName) {
   if (!mongoose.Types.ObjectId.isValid(value)) {
@@ -83,6 +110,13 @@ async function createOrder (req, res) {
     driverPayout: payoutValue
   });
 
+  broadcastOrderEvent(order, 'order:created');
+  broadcastVendorDrivers(order.vendorId, 'order:created', {
+    orderId: order._id,
+    driverPayout: order.driverPayout,
+    status: order.status
+  });
+
   res.status(201).json({ order });
 }
 
@@ -121,6 +155,8 @@ async function confirmOrder (req, res) {
   order.confirmedAt = new Date();
   await order.save();
 
+  broadcastOrderEvent(order, 'order:confirmed');
+
   res.json({ order });
 }
 
@@ -134,6 +170,13 @@ async function markReady (req, res) {
 
   order.status = 'Ready for Pickup';
   await order.save();
+
+  broadcastOrderEvent(order, 'order:ready');
+  broadcastVendorDrivers(order.vendorId, 'order:ready', {
+    orderId: order._id,
+    driverPayout: order.driverPayout,
+    status: order.status
+  });
   res.json({ order });
 }
 
@@ -190,6 +233,8 @@ async function assignOrder (req, res) {
     return res.status(409).json({ message: 'Order already assigned or not ready' });
   }
 
+  broadcastOrderEvent(updatedOrder, 'order:accepted', { driverId });
+
   res.json({ order: updatedOrder });
 }
 
@@ -212,6 +257,8 @@ async function markPickedUp (req, res) {
   order.pickedUpAt = new Date();
   order.status = 'On the Way';
   await order.save();
+
+  broadcastOrderEvent(order, 'order:pickedup');
 
   res.json({ order });
 }
@@ -250,6 +297,19 @@ async function markDelivered (req, res) {
 
   scheduleAutoPay(order._id);
 
+  broadcastOrderEvent(order, 'order:delivered', { deliveryPhotoUrl });
+  emitToRoom(`vendor:${order.vendorId}`, 'payout:pending', {
+    orderId: order._id,
+    driverId: order.assignedDriver,
+    autoPayAt: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+  });
+  if (order.assignedDriver) {
+    emitToRoom(`driver:${order.assignedDriver}`, 'payout:pending', {
+      orderId: order._id,
+      vendorId: order.vendorId
+    });
+  }
+
   res.json({ order });
 }
 
@@ -266,6 +326,8 @@ async function approveDeliveryPhoto (req, res) {
   order.deliveryPhotoReviewerId = req.user.id;
   order.deliveryPhotoRejectNote = undefined;
   await order.save();
+
+  broadcastOrderEvent(order, 'order:delivery-photo-approved');
 
   await payOrder(order._id, { auto: false });
 
@@ -294,6 +356,8 @@ async function rejectDeliveryPhoto (req, res) {
   await order.save();
 
   clearAutoPay(order._id);
+
+  broadcastOrderEvent(order, 'order:delivery-photo-rejected', { note });
 
   res.json({ order });
 }
@@ -356,6 +420,14 @@ async function rateDriver (req, res) {
 
   order.driverRatedByCustomer = true;
   await order.save();
+
+  emitToRoom(`driver:${driver._id}`, 'driver:rated', {
+    driverId: driver._id,
+    rating: driver.rating,
+    ratingCount: driver.ratingCount,
+    orderId: order._id,
+    givenRating: rating
+  });
 
   res.json({ order, driver });
 }

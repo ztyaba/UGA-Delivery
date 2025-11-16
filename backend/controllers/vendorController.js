@@ -1,5 +1,6 @@
 const Vendor = require('../models/Vendor');
 const Driver = require('../models/Driver');
+const { emitToRoom } = require('../sockets');
 
 async function loadVendor (vendorId) {
   const vendor = await Vendor.findById(vendorId);
@@ -40,6 +41,11 @@ async function inviteDriver (req, res) {
 
   await vendor.save();
 
+  emitToRoom(`driver:${driver._id}`, 'driver:application-invited', {
+    vendorId: vendor._id,
+    applicationId: appId
+  });
+
   res.json({ message: 'Driver invited', application });
 }
 
@@ -72,6 +78,15 @@ async function approveDriver (req, res) {
   application.deleteOne();
   await vendor.save();
 
+  emitToRoom(`driver:${driver._id}`, 'vendor:driver-approved', {
+    vendorId: vendor._id,
+    driverId: driver._id
+  });
+  emitToRoom(`vendor:${vendor._id}`, 'vendor:driver-approved', {
+    vendorId: vendor._id,
+    driverId: driver._id
+  });
+
   res.json({ message: 'Driver approved', vendor, driver });
 }
 
@@ -96,6 +111,11 @@ async function rejectDriver (req, res) {
 
   application.deleteOne();
   await vendor.save();
+
+  emitToRoom(`driver:${driver._id}`, 'driver:application-rejected', {
+    vendorId: vendor._id,
+    driverId: driver._id
+  });
 
   res.json({ message: 'Driver rejected' });
 }
