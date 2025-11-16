@@ -9,6 +9,9 @@ const connectDB = require('./config/db');
 const routes = require('./routes');
 const { initSocket } = require('./sockets');
 
+const connectDB = require('./config/db');
+const routes = require('./routes');
+
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const PORT = process.env.PORT || 4000;
@@ -39,5 +42,6 @@ app.use((err, req, res, next) => {
 initSocket(server);
 
 server.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Backend server running on port ${PORT}`); // eslint-disable-line no-console
 });

@@ -8,6 +8,7 @@
 
 * {
   box-sizing: border-box;
+  background-color: #f8fafc;
 }
 
 body {
@@ -327,4 +328,16 @@ label {
   .page {
     padding: 1.25rem;
   }
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 2rem;
+}
+
+header h1 {
+  margin-bottom: 0.5rem;
+}
+
+section {
+  max-width: 600px;
 }
