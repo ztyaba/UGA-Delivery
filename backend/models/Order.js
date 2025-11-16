@@ -9,6 +9,14 @@ const orderSchema = new Schema({
   customerShowsName: { type: Boolean, default: true },
   anonymousOrderNumber: { type: Number, default: null },
 
+  items: [{
+    name: { type: String, required: true },
+    quantity: { type: Number, default: 1 },
+    price: { type: Number, default: 0 }
+  }],
+  deliveryAddress: { type: String, required: true },
+  contactPhone: { type: String, required: true },
+
   driverPayout: { type: Number, default: 0 },
   assignedDriver: { type: Schema.Types.ObjectId, ref: 'Driver', default: null },
   customerSelectedDriver: { type: Schema.Types.ObjectId, ref: 'Driver', default: null },
